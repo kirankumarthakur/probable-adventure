@@ -1,0 +1,22 @@
+BasedOnStyle: Google
+Language: Cpp
+Standard: Latest
+
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignConsecutiveMacros: true
+
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+
+ColumnLimit: 120
+
+IncludeCategories:
+  - Regex:    '^<[a-z_]+>$'
+    Priority: 1
+    
+  - Regex:    '^<.*>$'
+    Priority: 2
+    
+  - Regex:    '^".*"'
+    Priority: 3
