@@ -7,14 +7,10 @@
 
 namespace padv {
 
-void serialize_state(
-    const entt::registry& registry,
-    const Simulation& simulation,
-    cereal::BinaryOutputArchive& archive);
+auto serialize_state(const entt::registry& registry, const Arena& arena,
+                     cereal::BinaryOutputArchive& archive) -> void;
 
-void deserialize_state(
-    entt::registry& registry,
-    Simulation& simulation,
-    cereal::BinaryInputArchive& archive);
+auto deserialize_state(entt::registry& registry, Arena& arena,
+                       cereal::BinaryInputArchive& archive) -> void;
 
-} // namespace padv
+}  // namespace padv

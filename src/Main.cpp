@@ -1,44 +1,80 @@
+#include <iostream>
+#include <optional>
 #include <string>
 
 #include <spdlog/spdlog.h>
 
-#include "padv/AiManager.hpp"
+#include "padv/Config.hpp"
+#include "padv/TextureManager.hpp"
+#include "padv/Trainer.hpp"
+#include "padv/ui/App.hpp"
 
-auto setup_logger() -> void { spdlog::set_pattern("[%T] [%^%l%$] %v"); }
+namespace {
+
+auto setup_logger() -> void {
+  spdlog::set_pattern("[%T] [%^%l%$] %v");
+}
+
+auto run_headless(padv::AppConfig config) -> int {
+  spdlog::info("Running Probable Adventure Engine in HEADLESS mode");
+  spdlog::info("Config: pop={}, gen={}, mut_rate={:.2f}, mut_str={:.2f}",
+               config.population_size, config.generations, config.mutation_rate, config.mutation_strength);
+
+  padv::Trainer trainer;
+  trainer.population_size   = config.population_size;
+  trainer.generations       = config.generations;
+  trainer.mutation_rate     = config.mutation_rate;
+  trainer.mutation_strength = config.mutation_strength;
+  trainer.tournament_size   = config.tournament_size;
+  trainer.elitism_count     = config.elitism_count;
+  trainer.max_eval_ticks    = config.max_eval_ticks;
+  trainer.checkpoint_mgr.set_policy(config.checkpoint_policy, config.top_k_count, config.periodic_interval);
+
+  trainer.initialize(config.population_size, config.generations);
+  trainer.train();
+
+  spdlog::info("Headless training completed successfully.");
+  return 0;
+}
+
+auto run_gui_application(padv::AppConfig config) -> int {
+  auto& app = padv::ui::App::instance();
+  if (!app.init(config)) {
+    return 1;
+  }
+  return app.run();
+}
+
+}
 
 auto main(int argc, char** argv) -> int {
   setup_logger();
 
-  int   pop      = 10;
-  int   gen      = 20;
-  float mut_rate = 0.1f;
-  float mut_str  = 0.5f;
+  padv::AppConfig config;
+  config.load_from_file("config.json");
+
+  bool headless = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
-    if (arg == "--pop" && i + 1 < argc) {
-      pop = std::stoi(argv[++i]);
+    if (arg == "--headless") {
+      headless = true;
+    } else if (arg == "--pop" && i + 1 < argc) {
+      config.population_size = std::stoi(argv[++i]);
     } else if (arg == "--gen" && i + 1 < argc) {
-      gen = std::stoi(argv[++i]);
+      config.generations = std::stoi(argv[++i]);
     } else if (arg == "--mut-rate" && i + 1 < argc) {
-      mut_rate = std::stof(argv[++i]);
+      config.mutation_rate = std::stof(argv[++i]);
     } else if (arg == "--mut-str" && i + 1 < argc) {
-      mut_str = std::stof(argv[++i]);
+      config.mutation_strength = std::stof(argv[++i]);
+    } else if (arg == "--config" && i + 1 < argc) {
+      config.load_from_file(argv[++i]);
     }
   }
 
-  spdlog::info("Starting Engine with Multithreaded AI Manager");
-  spdlog::info("Config: pop={}, gen={}, mut_rate={:.2f}, mut_str={:.2f}", pop, gen, mut_rate, mut_str);
+  if (headless) {
+    return run_headless(config);
+  }
 
-  padv::AiManager manager;
-  manager.population_size   = pop;
-  manager.generations       = gen;
-  manager.mutation_rate     = mut_rate;
-  manager.mutation_strength = mut_str;
-
-  // 21 inputs: HP, Stamina, 11 Vision Rays, 8 Sound Rays
-  manager.initialize(21, 24, 5);
-  manager.train();
-
-  return 0;
+  return run_gui_application(config);
 }

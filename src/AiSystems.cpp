@@ -5,6 +5,8 @@
 
 #include <glm/glm.hpp>
 
+#include "padv/ModalPolicy.hpp"
+#include "padv/SpatialGrid2D.hpp"
 #include "padv/Systems.hpp"
 
 #ifndef M_PI
@@ -13,18 +15,44 @@
 
 namespace padv {
 
-void perception_system(entt::registry& registry) {
-  auto knights  = registry.view<Knight, Transform, Perception, PerceptionData>(entt::exclude<Dead>);
-  auto monsters = registry.view<Monster, Transform>(entt::exclude<Dead>);
+auto perception_system(entt::registry& registry) -> void {
+  auto adventurers = registry.view<Adventurer, Transform, Health, Stamina, Perception, SensorData>(entt::exclude<Dead>);
+  auto slimes      = registry.view<Slime, Transform>(entt::exclude<Dead>);
 
   constexpr int   NUM_VISION_RAYS = 11;
   constexpr int   NUM_SOUND_RAYS  = 8;
-  constexpr float MONSTER_RADIUS  = 1.5f;
+  constexpr float SLIME_RADIUS    = 1.5f;
 
-  for (auto knight : knights) {
-    auto& transform  = knights.get<Transform>(knight);
-    auto& perception = knights.get<Perception>(knight);
-    auto& data       = knights.get<PerceptionData>(knight);
+  for (auto adv : adventurers) {
+    auto&       transform  = adventurers.get<Transform>(adv);
+    const auto& health     = adventurers.get<Health>(adv);
+    const auto& stamina    = adventurers.get<Stamina>(adv);
+    auto&       perception = adventurers.get<Perception>(adv);
+    auto&       data       = adventurers.get<SensorData>(adv);
+
+    data.hp_ratio      = health.max > 0.0f ? (health.current / health.max) : 0.0f;
+    data.stamina_ratio = stamina.max > 0.0f ? (stamina.current / stamina.max) : 0.0f;
+
+    auto* cd_cleave = registry.try_get<Cooldown<CleaveSkill>>(adv);
+    auto* cd_shield = registry.try_get<Cooldown<ShieldSkill>>(adv);
+    auto* cd_warcry = registry.try_get<Cooldown<WarcrySkill>>(adv);
+
+    data.cleave_cd = (cd_cleave && cd_cleave->time_left > 0.0f) ? 0.0f : 1.0f;
+    data.shield_cd = (cd_shield && cd_shield->time_left > 0.0f) ? 0.0f : 1.0f;
+    data.warcry_cd = (cd_warcry && cd_warcry->time_left > 0.0f) ? 0.0f : 1.0f;
+
+    data.is_debuffed = (registry.all_of<Stunned>(adv) || registry.all_of<Slowed>(adv)) ? 1.0f : 0.0f;
+
+    constexpr float WARNING_DIST = 25.0f;
+    float           dist_north   = transform.position.y - (-100.0f);
+    float           dist_south   = 100.0f - transform.position.y;
+    float           dist_east    = 100.0f - transform.position.x;
+    float           dist_west    = transform.position.x - (-100.0f);
+
+    data.wall_north = std::clamp(1.0f - dist_north / WARNING_DIST, 0.0f, 1.0f);
+    data.wall_south = std::clamp(1.0f - dist_south / WARNING_DIST, 0.0f, 1.0f);
+    data.wall_east  = std::clamp(1.0f - dist_east / WARNING_DIST, 0.0f, 1.0f);
+    data.wall_west  = std::clamp(1.0f - dist_west / WARNING_DIST, 0.0f, 1.0f);
 
     data.vision_rays.clear();
     data.sound_rays.clear();
@@ -42,15 +70,15 @@ void perception_system(entt::registry& registry) {
       float closest_dist = perception.vision_radius;
       bool  hit_anything = false;
 
-      for (auto monster : monsters) {
-        auto&     m_trans = monsters.get<Transform>(monster);
-        glm::vec2 L       = m_trans.position - transform.position;
+      for (auto slime : slimes) {
+        auto&     s_trans = slimes.get<Transform>(slime);
+        glm::vec2 L       = s_trans.position - transform.position;
 
         float tca = glm::dot(L, ray_dir);
-        if (tca < 0 || tca > perception.vision_radius + MONSTER_RADIUS) continue;
+        if (tca < 0 || tca > perception.vision_radius + SLIME_RADIUS) continue;
 
         float d2      = glm::dot(L, L) - tca * tca;
-        float radius2 = MONSTER_RADIUS * MONSTER_RADIUS;
+        float radius2 = SLIME_RADIUS * SLIME_RADIUS;
         if (d2 > radius2) continue;
 
         float thc      = std::sqrt(radius2 - d2);
@@ -72,17 +100,17 @@ void perception_system(entt::registry& registry) {
       glm::vec2 ray_dir(std::cos(ray_angle), std::sin(ray_angle));
 
       bool hit_anything = false;
-      for (auto monster : monsters) {
-        if (!registry.all_of<Audible>(monster)) continue;
+      for (auto slime : slimes) {
+        if (!registry.all_of<Audible>(slime)) continue;
 
-        auto&     m_trans = monsters.get<Transform>(monster);
-        glm::vec2 L       = m_trans.position - transform.position;
+        auto&     s_trans = slimes.get<Transform>(slime);
+        glm::vec2 L       = s_trans.position - transform.position;
 
         float tca = glm::dot(L, ray_dir);
-        if (tca < 0 || tca > perception.hearing_radius + MONSTER_RADIUS) continue;
+        if (tca < 0 || tca > perception.hearing_radius + SLIME_RADIUS) continue;
 
         float d2      = glm::dot(L, L) - tca * tca;
-        float radius2 = MONSTER_RADIUS * MONSTER_RADIUS;
+        float radius2 = SLIME_RADIUS * SLIME_RADIUS;
 
         if (d2 <= radius2) {
           float thc = std::sqrt(radius2 - d2);
@@ -98,110 +126,102 @@ void perception_system(entt::registry& registry) {
   }
 }
 
-void mlp_ai_system(entt::registry& registry) {
-  auto view = registry.view<MlpBrain, Command, Health, Stamina, PerceptionData>(entt::exclude<Dead>);
-
+auto adventurer_ai_system(entt::registry& registry) -> void {
+  auto view = registry.view<ModalPolicy, Command, SensorData>(entt::exclude<Dead>);
   for (auto entity : view) {
-    const auto& brain      = view.get<MlpBrain>(entity);
-    auto&       command    = view.get<Command>(entity);
-    const auto& hp         = view.get<Health>(entity);
-    const auto& stamina    = view.get<Stamina>(entity);
-    const auto& perception = view.get<PerceptionData>(entity);
-
-    std::vector<float> inputs(brain.input_size, 0.0f);
-
-    int expected_inputs = 2 + perception.vision_rays.size() + perception.sound_rays.size();
-
-    if (brain.input_size >= expected_inputs && expected_inputs > 2) {
-      inputs[0] = static_cast<float>(hp.current / hp.max);
-      inputs[1] = static_cast<float>(stamina.current / stamina.max);
-
-      int idx = 2;
-      for (const auto& ray : perception.vision_rays) {
-        inputs[idx++] = ray.hit ? (1.0f - (ray.distance / 100.0f)) : 0.0f;
-      }
-      for (const auto& ray : perception.sound_rays) {
-        inputs[idx++] = ray.hit ? 1.0f : 0.0f;
-      }
-    }
-
-    std::vector<float> hidden(brain.hidden_size, 0.0f);
-    for (int h = 0; h < brain.hidden_size; ++h) {
-      float sum = brain.hidden_biases[h];
-      for (int i = 0; i < brain.input_size; ++i) {
-        sum += inputs[i] * brain.hidden_weights[i * brain.hidden_size + h];
-      }
-      hidden[h] = std::max(0.0f, sum);
-    }
-
-    std::vector<float> outputs(brain.output_size, 0.0f);
-    for (int o = 0; o < brain.output_size; ++o) {
-      float sum = brain.output_biases[o];
-      for (int h = 0; h < brain.hidden_size; ++h) {
-        sum += hidden[h] * brain.output_weights[h * brain.output_size + o];
-      }
-      outputs[o] = sum;
-    }
-
-    if (brain.output_size >= 5) {
-      command.move = glm::vec2(outputs[0], outputs[1]);
-      if (outputs[2] > 0.5f)
-        command.requested_action = Action::Cleave;
-      else if (outputs[3] > 0.5f)
-        command.requested_action = Action::Shield;
-      else if (outputs[4] > 0.5f)
-        command.requested_action = Action::Warcry;
-      else
-        command.requested_action = Action::None;
-    }
+    auto&       policy  = view.get<ModalPolicy>(entity);
+    auto&       command = view.get<Command>(entity);
+    const auto& sensors = view.get<SensorData>(entity);
+    command             = policy.evaluate(sensors);
   }
 }
 
-void monster_ai_system(entt::registry& registry) {
-  auto knights = registry.view<Knight, Transform>(entt::exclude<Dead>);
-  if (knights.begin() == knights.end()) return;
+auto slime_ai_system(entt::registry& registry) -> void {
+  auto adventurers = registry.view<Adventurer, Transform>(entt::exclude<Dead>);
+  if (adventurers.begin() == adventurers.end()) return;
 
-  glm::vec2 knight_pos = knights.get<Transform>(*knights.begin()).position;
-  auto      monsters   = registry.view<Monster, Transform, Command, CleaveSkill>(entt::exclude<Dead, Stunned>);
+  glm::vec2 adv_pos = adventurers.get<Transform>(*adventurers.begin()).position;
+  auto      slimes  = registry.view<Slime, Transform, Command, CleaveSkill>(entt::exclude<Dead>);
 
-  for (auto entity : monsters) {
-    auto&       transform = monsters.get<Transform>(entity);
-    auto&       command   = monsters.get<Command>(entity);
-    const auto& skill     = monsters.get<CleaveSkill>(entity);
+  SpatialGrid2D grid(6.0f);
+  for (auto entity : slimes) {
+    grid.insert(entity, slimes.get<Transform>(entity).position);
+  }
 
-    glm::vec2 delta    = knight_pos - transform.position;
-    float     dist_sq  = glm::dot(delta, delta);
-    float     range_sq = skill.range * skill.range;
+  std::vector<entt::entity> neighbors;
+  neighbors.reserve(16);
 
-    glm::vec2 direction = dist_sq > 0.0001f ? glm::normalize(delta) : glm::vec2(1.0f, 0.0f);
+  for (auto entity : slimes) {
+    auto&       transform = slimes.get<Transform>(entity);
+    auto&       command   = slimes.get<Command>(entity);
+    const auto& skill     = slimes.get<CleaveSkill>(entity);
+    auto*       behavior  = registry.try_get<SlimeBehavior>(entity);
 
-    // Apply Boids-style separation so they flank and steer around each other
+    if (registry.all_of<Stunned>(entity)) {
+      command.move             = glm::vec2(0.0f);
+      command.requested_action = Action::None;
+      if (behavior) behavior->state = SlimeState::Stunned;
+      continue;
+    }
+
+    glm::vec2 delta   = adv_pos - transform.position;
+    float     dist_sq = glm::dot(delta, delta);
+    float     dist    = std::sqrt(std::max(0.0001f, dist_sq));
+
+    glm::vec2 direction(1.0f, 0.0f);
+    if (dist > 0.0001f) direction = delta / dist;
+
+    auto* cooldown = registry.try_get<Cooldown<CleaveSkill>>(entity);
+    bool  cd_ready = (!cooldown || cooldown->time_left <= 0.0f);
+
+    if (dist <= skill.range && cd_ready) {
+      if (behavior) behavior->state = SlimeState::Pounce;
+      command.requested_action = Action::Cleave;
+      command.move             = glm::vec2(0.0f);
+    } else if (dist <= 8.0f && behavior && std::abs(adv_pos.x) < 80.0f && std::abs(adv_pos.y) < 80.0f) {
+      behavior->state = SlimeState::Encircle;
+      glm::vec2 target_pos =
+          adv_pos +
+          glm::vec2(std::cos(behavior->encircle_angle), std::sin(behavior->encircle_angle)) *
+              static_cast<float>(behavior->preferred_dist);
+      glm::vec2 to_target = target_pos - transform.position;
+      float     to_dist   = glm::length(to_target);
+      if (to_dist > 0.5f) {
+        direction = to_target / to_dist;
+      }
+      command.requested_action = Action::None;
+    } else {
+      if (behavior) behavior->state = SlimeState::Approach;
+      command.requested_action = Action::None;
+    }
+
+    grid.query_radius(transform.position, 1.8f, neighbors);
     glm::vec2 separation(0.0f);
-    int       neighbors = 0;
-    for (auto other : monsters) {
+    int       count = 0;
+
+    for (auto other : neighbors) {
       if (other == entity) continue;
-      glm::vec2 other_pos = monsters.get<Transform>(other).position;
+      glm::vec2 other_pos = slimes.get<Transform>(other).position;
       glm::vec2 diff      = transform.position - other_pos;
       float     d_sq      = glm::dot(diff, diff);
-      if (d_sq > 0.0001f && d_sq < 9.0f) {  // 3.0 unit radius to care about neighbors
+
+      if (d_sq < 0.01f) {
+        separation += glm::vec2(1.0f, 0.5f);
+        count++;
+      } else if (d_sq < 3.24f) {
         separation += glm::normalize(diff) / std::sqrt(d_sq);
-        neighbors++;
+        count++;
       }
     }
 
-    if (neighbors > 0) {
-      // Blend primary direction (weighted heavily) with the separation vector
-      direction = glm::normalize(direction * 2.0f + separation);
+    if (count > 0) {
+      direction = glm::normalize(direction * 3.5f + separation);
     }
 
-    if (dist_sq < (range_sq * 0.6f)) {
-      command.move = glm::vec2(0.0f);
-    } else {
+    if (command.requested_action != Action::Cleave) {
       command.move = direction;
     }
-
-    command.requested_action = (dist_sq > range_sq) ? Action::None : Action::Cleave;
   }
 }
 
-}  // namespace padv
+}

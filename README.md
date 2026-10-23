@@ -1,84 +1,66 @@
-# Probable Adventure
+# Portable Adventure
 
-A C++ multiplayer-style tactical survival simulation driven by a Multi-Layer Perceptron (MLP) Neural Network, built with an Entity Component System (**EnTT**), **SFML 3**, and **Dear ImGui**.
+A 2D simulation where an adventurer learns to survive and fight slimes in an arena using a neural network (MLP) trained with a genetic algorithm. Built in C++23 using SFML 3, EnTT, and Clay UI.
 
----
+## Demos
 
-> [!NOTE]
-> This README.md is generated with the help of AI (Google Gemini)
+### Training View
+Shows the training process and metrics across generations (fitness score, error, survival time, kills, damage dealt, and weight norm).
 
-## Prerequisites
+<video src="assets/file1.mp4" controls width="100%"></video>
 
-Before building, ensure you have the following installed on your system:
+### Simulation / Inspector View
+Lets you load saved model checkpoints, watch the policy run live in the arena, adjust simulation speed, or trigger abilities manually.
 
-* A compiler supporting **C++23** (GCC 13+, Clang 16+, or MSVC 2022+)
-* **CMake** (version 3.20 or higher)
-* Development libraries for **SFML 3** dependencies (OpenGL, X11/Wayland, UDev, FreeType, etc. on Linux systems)
+<video src="assets/file2.mp4" controls width="100%"></video>
 
----
+## Requirements
 
-## Building Instructions
+* C++23 compiler (MSVC 2022, GCC 13+, or Clang 16+)
+* CMake 3.20 or newer
 
-Follow these steps to configure and build the project from source:
-
-1. **Clone or open the repository terminal** in the project root directory.
-2. **Create a build directory:**
-```bash
-mkdir build
-cd build
-
-```
-
-
-3. **Configure the project with CMake:**
-```bash
-cmake -DCMAKE_BUILD_TYPE=Release ..
-
-```
-
-
-4. **Compile the executables:**
-```bash
-cmake --build . --config Release
-
-```
-
-
----
-
-## Running the Application
-
-Once built, the binaries will be located in your `build` directory (or subdirectories depending on your generator).
-
-### 1. Training / Simulation Engine (`probable_adventure`)
-
-Runs the genetic algorithm and trains the neural network across multiple generations, saving the best brains and simulation snapshots.
+## Building
 
 ```bash
-./probable_adventure
-
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
 ```
 
-**Optional Command-Line Arguments:**
-You can customize the training parameters directly via arguments:
+The binary will be built in:
+* **Windows**: `build/Release/probable_adventure.exe`
+* **Linux/macOS**: `build/probable_adventure`
 
-* `--pop <int>`: Population size per generation (default: `10`)
-* `--gen <int>`: Total number of generations to train (default: `20`)
-* `--mut-rate <float>`: Mutation probability rate (default: `0.1`)
-* `--mut-str <float>`: Mutation weight shift strength (default: `0.5`)
+## Running
 
-*Example:*
+Make sure to run the executable from the repository root so it can locate the `assets/` directory:
 
-```bash
-./probable_adventure --pop 30 --gen 50 --mut-rate 0.15
-
+```powershell
+.\build\Release\probable_adventure.exe
 ```
 
-### 2. Visual Replay Viewer (`probable_adventure_viewer`)
+### Headless Training
+You can also run training directly in the terminal without opening the window:
 
-Launches the SFML window with ImGui playback controls to watch the trained agent, toggle diagnostic hitboxes, raycasts, and track simulation stats.
-
-```bash
-./probable_adventure_viewer
-
+```powershell
+.\build\Release\probable_adventure.exe --headless --pop 30 --gen 50
 ```
+
+CLI options:
+* `--pop <int>`: Population size per generation (default: `30`)
+* `--gen <int>`: Number of generations (default: `50`)
+* `--mut-rate <float>`: Mutation rate (default: `0.10`)
+* `--mut-str <float>`: Mutation strength (default: `0.35`)
+
+## How It Works
+
+* **Inputs & Outputs**: The neural network takes 28 sensor inputs (HP, stamina, skill cooldowns, wall distance, 11 vision rays, and 8 sound rays). It outputs movement direction (X, Y) and decisions for 3 abilities: Cleave, Shield, and Warcry.
+* **Scoring**: Agents are rewarded for dealing damage, killing slimes, using shields to block attacks, and surviving. They are penalized for taking damage and hugging walls.
+* **Checkpoints**: Top models are saved as `.safetensors` in the `checkpoints/` folder and can be reloaded in the Analyze tab.
+
+## Controls (Analyze View)
+
+* `Space`: Play / Pause simulation
+* `Q`: Cleave
+* `W`: Shield
+* `E`: Warcry
+* `1`, `2`, `3`: Switch tabs (Train / Analyze / Configure)

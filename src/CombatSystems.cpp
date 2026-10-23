@@ -7,17 +7,18 @@
 
 namespace padv {
 
-void damage_system(entt::registry& registry) {
-  auto view = registry.view<Transform, Health, DamageQueue, CurrentAction>(entt::exclude<Dead>);
+auto damage_system(entt::registry& registry, Arena& arena) -> void {
+  auto view = registry.view<Transform, Health, DamageQueue, ActionState>(entt::exclude<Dead>);
 
-  static std::mt19937                   rng(1337);
+  thread_local static std::mt19937     rng(std::random_device{}());
   std::uniform_real_distribution<float> rand_vel(-0.1f, 0.1f);
 
   for (auto entity : view) {
-    const auto& transform = view.get<Transform>(entity);
-    auto&       health    = view.get<Health>(entity);
-    auto&       queue     = view.get<DamageQueue>(entity);
-    const auto& action    = view.get<CurrentAction>(entity);
+    const auto& transform    = view.get<Transform>(entity);
+    auto&       health       = view.get<Health>(entity);
+    auto&       queue        = view.get<DamageQueue>(entity);
+    const auto& action       = view.get<ActionState>(entity);
+    bool        is_adventurer = registry.all_of<Adventurer>(entity);
 
     for (const auto& hit : queue.hits) {
       F32 damage     = hit.damage;
@@ -39,6 +40,13 @@ void damage_system(entt::registry& registry) {
       health.current -= damage;
       if (health.current < 0.0f) health.current = 0.0f;
 
+      if (is_adventurer) {
+        arena.damage_blocked += blocked_amount;
+        arena.damage_taken += damage;
+      } else {
+        arena.damage_dealt += damage;
+      }
+
       if (blocked_amount > 0.1f) {
         auto txt = registry.create();
         registry.emplace<FloatingText>(txt, blocked_amount,
@@ -57,7 +65,7 @@ void damage_system(entt::registry& registry) {
   }
 }
 
-void death_system(entt::registry& registry, Simulation& simulation) {
+auto death_system(entt::registry& registry, Arena& arena) -> void {
   auto view = registry.view<Health>(entt::exclude<Dead>);
 
   for (auto entity : view) {
@@ -65,10 +73,14 @@ void death_system(entt::registry& registry, Simulation& simulation) {
 
     registry.emplace<Dead>(entity);
 
-    if (registry.all_of<Knight>(entity)) {
-      simulation.game_over = true;
-    } else if (registry.all_of<Monster>(entity)) {
-      ++simulation.monsters_killed;
+    if (registry.all_of<Adventurer>(entity)) {
+      arena.game_over = true;
+    } else if (registry.all_of<Slime>(entity)) {
+      ++arena.slimes_killed;
+      for (auto adv : registry.view<Adventurer, Health>()) {
+        auto& h = registry.get<Health>(adv);
+        h.current = std::min(h.max, h.current + 15.0f);
+      }
     }
   }
 }

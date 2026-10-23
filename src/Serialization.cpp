@@ -4,22 +4,21 @@
 
 namespace padv {
 
-void serialize_state(const entt::registry& registry, const Simulation& simulation,
-                     cereal::BinaryOutputArchive& archive) {
-  archive(simulation);
+auto serialize_state(const entt::registry& registry, const Arena& arena,
+                     cereal::BinaryOutputArchive& archive) -> void {
+  archive(arena);
 
   entt::snapshot{registry}
       .get<entt::entity>(archive)
-      .get<Knight>(archive)
-      .get<Monster>(archive)
+      .get<Adventurer>(archive)
+      .get<Slime>(archive)
       .get<Transform>(archive)
       .get<Health>(archive)
       .get<Stamina>(archive)
-      .get<CurrentAction>(archive)
+      .get<ActionState>(archive)
       .get<Command>(archive)
-      .get<PerceptionData>(archive)
+      .get<SensorData>(archive)
       .get<FloatingText>(archive)
-      .get<AttackSkill>(archive)
       .get<CleaveSkill>(archive)
       .get<ShieldSkill>(archive)
       .get<WarcrySkill>(archive)
@@ -28,24 +27,23 @@ void serialize_state(const entt::registry& registry, const Simulation& simulatio
       .get<Cooldown<WarcrySkill>>(archive);
 }
 
-void deserialize_state(entt::registry& registry, Simulation& simulation, cereal::BinaryInputArchive& archive) {
-  archive(simulation);
+auto deserialize_state(entt::registry& registry, Arena& arena, cereal::BinaryInputArchive& archive) -> void {
+  archive(arena);
 
   registry.clear();
 
   entt::continuous_loader loader{registry};
 
   loader.get<entt::entity>(archive)
-      .get<Knight>(archive)
-      .get<Monster>(archive)
+      .get<Adventurer>(archive)
+      .get<Slime>(archive)
       .get<Transform>(archive)
       .get<Health>(archive)
       .get<Stamina>(archive)
-      .get<CurrentAction>(archive)
+      .get<ActionState>(archive)
       .get<Command>(archive)
-      .get<PerceptionData>(archive)
+      .get<SensorData>(archive)
       .get<FloatingText>(archive)
-      .get<AttackSkill>(archive)
       .get<CleaveSkill>(archive)
       .get<ShieldSkill>(archive)
       .get<WarcrySkill>(archive)

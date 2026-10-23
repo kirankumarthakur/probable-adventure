@@ -5,30 +5,28 @@
 
 namespace padv {
 
-void finish_action(CurrentAction& current) {
+auto finish_action(ActionState& current) -> void {
   current.action   = Action::None;
   current.elapsed  = 0.0f;
   current.duration = 0.0f;
   current.executed = false;
 }
 
-void execution_system(entt::registry& registry) {
-  auto view = registry.view<Command, CurrentAction, Stamina>(entt::exclude<Dead, Stunned>);
+auto execution_system(entt::registry& registry, Arena& arena) -> void {
+  auto view = registry.view<Command, ActionState, Stamina>(entt::exclude<Dead, Stunned>);
 
   for (auto entity : view) {
     auto& command = view.get<Command>(entity);
-    auto& current = view.get<CurrentAction>(entity);
+    auto& current = view.get<ActionState>(entity);
     auto& stamina = view.get<Stamina>(entity);
 
-    // Shield Fix: Maintain shield if holding button, stop and trigger cooldown if button dropped or out of stamina
     if (current.action == Action::Shield) {
       if (command.requested_action == Action::Shield && stamina.current >= 0.5f) {
-        stamina.current -= 0.5f;  // Drain stamina while maintaining
+        stamina.current -= 0.5f;
         command.requested_action = Action::None;
-        continue;  // Keep shielding
+        continue;
       }
 
-      // Stop shielding (either AI dropped command or ran out of stamina)
       if (auto* skill = registry.try_get<ShieldSkill>(entity)) {
         if (auto* cooldown = registry.try_get<Cooldown<ShieldSkill>>(entity)) {
           cooldown->time_left = skill->cooldown;
@@ -48,16 +46,6 @@ void execution_system(entt::registry& registry) {
       case Action::None:
         break;
 
-      case Action::Attack: {
-        auto* skill = registry.try_get<AttackSkill>(entity);
-        if (!skill) break;
-        current.action   = Action::Attack;
-        current.elapsed  = 0.0f;
-        current.duration = skill->cast_time;
-        current.executed = false;
-        break;
-      }
-
       case Action::Cleave: {
         auto* skill    = registry.try_get<CleaveSkill>(entity);
         auto* cooldown = registry.try_get<Cooldown<CleaveSkill>>(entity);
@@ -71,6 +59,9 @@ void execution_system(entt::registry& registry) {
         current.elapsed  = 0.0f;
         current.duration = skill->cast_time;
         current.executed = false;
+        if (registry.all_of<Adventurer>(entity)) {
+          arena.cleave_count++;
+        }
         break;
       }
 
@@ -80,13 +71,15 @@ void execution_system(entt::registry& registry) {
 
         if (!skill || !cooldown || cooldown->time_left > 0.0f || stamina.current < skill->stamina_cost_active) break;
 
-        // Initial casting cost
         stamina.current -= skill->stamina_cost_active;
 
         current.action   = Action::Shield;
         current.elapsed  = 0.0f;
-        current.duration = std::numeric_limits<F32>::max();  // Active indefinitely until stopped
+        current.duration = std::numeric_limits<F32>::max();
         current.executed = false;
+        if (registry.all_of<Adventurer>(entity)) {
+          arena.shield_count++;
+        }
         break;
       }
 
@@ -103,6 +96,9 @@ void execution_system(entt::registry& registry) {
         current.elapsed  = 0.0f;
         current.duration = skill->cast_time;
         current.executed = false;
+        if (registry.all_of<Adventurer>(entity)) {
+          arena.warcry_count++;
+        }
         break;
       }
     }
@@ -111,11 +107,11 @@ void execution_system(entt::registry& registry) {
   }
 }
 
-void action_system(entt::registry& registry) {
-  auto view = registry.view<CurrentAction>(entt::exclude<Dead>);
+auto action_system(entt::registry& registry) -> void {
+  auto view = registry.view<ActionState>(entt::exclude<Dead>);
 
   for (auto entity : view) {
-    auto& current = view.get<CurrentAction>(entity);
+    auto& current = view.get<ActionState>(entity);
 
     if (current.action == Action::None) continue;
 
@@ -126,38 +122,6 @@ void action_system(entt::registry& registry) {
       case Action::Shield:
         break;
 
-      case Action::Attack: {
-        if (current.elapsed < current.duration) break;
-
-        const auto& transform = registry.get<Transform>(entity);
-        const auto& skill     = registry.get<AttackSkill>(entity);
-
-        if (registry.all_of<Knight>(entity)) {
-          auto      targets  = registry.view<Monster, Transform, DamageQueue>(entt::exclude<Dead>);
-          const F32 range_sq = skill.range * skill.range;
-
-          for (auto target : targets) {
-            const auto& target_transform = targets.get<Transform>(target);
-            glm::vec2   delta            = target_transform.position - transform.position;
-            if (glm::dot(delta, delta) > range_sq) continue;
-            targets.get<DamageQueue>(target).hits.push_back({entity, skill.damage, glm::normalize(delta)});
-          }
-        } else {
-          auto      targets  = registry.view<Knight, Transform, DamageQueue>(entt::exclude<Dead>);
-          const F32 range_sq = skill.range * skill.range;
-
-          for (auto target : targets) {
-            const auto& target_transform = targets.get<Transform>(target);
-            glm::vec2   delta            = target_transform.position - transform.position;
-            if (glm::dot(delta, delta) > range_sq) continue;
-            targets.get<DamageQueue>(target).hits.push_back({entity, skill.damage, glm::normalize(delta)});
-          }
-        }
-
-        finish_action(current);
-        break;
-      }
-
       case Action::Cleave: {
         if (current.elapsed < current.duration) {
           break;
@@ -167,8 +131,8 @@ void action_system(entt::registry& registry) {
         const auto& skill     = registry.get<CleaveSkill>(entity);
         const F32   range_sq  = skill.range * skill.range;
 
-        if (registry.all_of<Knight>(entity)) {
-          auto targets = registry.view<Monster, Transform, DamageQueue>(entt::exclude<Dead>);
+        if (registry.all_of<Adventurer>(entity)) {
+          auto targets = registry.view<Slime, Transform, DamageQueue>(entt::exclude<Dead>);
 
           for (auto target : targets) {
             const auto& target_transform = targets.get<Transform>(target);
@@ -185,8 +149,8 @@ void action_system(entt::registry& registry) {
 
             targets.get<DamageQueue>(target).hits.push_back({entity, skill.damage, dir});
           }
-        } else if (registry.all_of<Monster>(entity)) {
-          auto targets = registry.view<Knight, Transform, DamageQueue>(entt::exclude<Dead>);
+        } else if (registry.all_of<Slime>(entity)) {
+          auto targets = registry.view<Adventurer, Transform, DamageQueue>(entt::exclude<Dead>);
 
           for (auto target : targets) {
             const auto& target_transform = targets.get<Transform>(target);
@@ -210,7 +174,7 @@ void action_system(entt::registry& registry) {
 
         const auto& transform = registry.get<Transform>(entity);
         const auto& skill     = registry.get<WarcrySkill>(entity);
-        auto        targets   = registry.view<Monster, Transform>();
+        auto        targets   = registry.view<Slime, Transform>();
 
         const F32 stun_radius_sq = skill.stun_radius * skill.stun_radius;
         const F32 slow_radius_sq = skill.slow_radius * skill.slow_radius;
@@ -236,7 +200,7 @@ void action_system(entt::registry& registry) {
   }
 }
 
-void cooldown_system(entt::registry& registry) {
+auto cooldown_system(entt::registry& registry) -> void {
   for (auto entity : registry.view<Cooldown<CleaveSkill>>()) {
     auto& cooldown = registry.get<Cooldown<CleaveSkill>>(entity);
     if (cooldown.time_left > 0.0f) --cooldown.time_left;
@@ -253,7 +217,7 @@ void cooldown_system(entt::registry& registry) {
   }
 }
 
-void floating_text_system(entt::registry& registry) {
+auto floating_text_system(entt::registry& registry) -> void {
   auto                      view = registry.view<FloatingText>();
   std::vector<entt::entity> to_delete;
 

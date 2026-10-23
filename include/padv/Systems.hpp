@@ -6,24 +6,24 @@
 
 namespace padv {
 
-void perception_system(entt::registry&);
-void mlp_ai_system(entt::registry&);
-void monster_ai_system(entt::registry&);
+auto perception_system(entt::registry& registry) -> void;
+auto adventurer_ai_system(entt::registry& registry) -> void;
+auto slime_ai_system(entt::registry& registry) -> void;
 
-void finish_action(CurrentAction&);
-void execution_system(entt::registry&);
-void action_system(entt::registry&);
-void cooldown_system(entt::registry&);
+auto finish_action(ActionState& current) -> void;
+auto execution_system(entt::registry& registry, Arena& arena) -> void;
+auto action_system(entt::registry& registry) -> void;
+auto cooldown_system(entt::registry& registry) -> void;
 
-void damage_system(entt::registry&);
-void death_system(entt::registry&, Simulation&);
+auto damage_system(entt::registry& registry, Arena& arena) -> void;
+auto death_system(entt::registry& registry, Arena& arena) -> void;
 
-void movement_system(entt::registry&);
-void collision_system(entt::registry&);
-void recovery_system(entt::registry&);
-void status_system(entt::registry&);
-void floating_text_system(entt::registry&);
+auto movement_system(entt::registry& registry) -> void;
+auto collision_system(entt::registry& registry) -> void;
+auto recovery_system(entt::registry& registry) -> void;
+auto status_system(entt::registry& registry) -> void;
+auto floating_text_system(entt::registry& registry) -> void;
 
-void spawn_system(entt::registry&, Simulation&);
+auto spawn_system(entt::registry& registry, Arena& arena) -> void;
 
 }  // namespace padv
