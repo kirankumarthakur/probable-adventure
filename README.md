@@ -7,12 +7,12 @@ A 2D simulation where an adventurer learns to survive and fight slimes in an are
 ### Training View
 Shows the training process and metrics across generations (fitness score, error, survival time, kills, damage dealt, and weight norm).
 
-<video src="assets/file1.mp4" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/aec0eff4-86cf-4819-bfd5-52073746320a" controls width="100%"></video>
 
 ### Simulation / Inspector View
 Lets you load saved model checkpoints, watch the policy run live in the arena, adjust simulation speed, or trigger abilities manually.
 
-<video src="assets/file2.mp4" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/015a0909-b971-4cb4-9a15-dbb9fca50b6e" controls width="100%"></video>
 
 ## Requirements
 
